@@ -1,4 +1,4 @@
-# LLM-Recommendation-system
+
 # LLM-Based Recommendation System
 
 An intelligent recommendation system developed using Large Language Models (LLMs), Machine Learning, and NLP techniques to generate personalized product recommendations based on user behavior and interaction patterns. The project uses the Retail Rocket Dataset to analyze user activity and provide context-aware recommendations through an interactive Streamlit web application.
