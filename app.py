@@ -5,22 +5,17 @@ from groq import Groq
 
 from dotenv import load_dotenv
 
-# 1. Load the environment variables from the hidden .env file
 load_dotenv()
 
-# 2. Retrieve the Groq API key safely from the system environment
 groq_api_key = os.getenv("GROQ_API_KEY")
 
-# 3. Initialize your Groq client using the hidden key
 client = Groq(api_key=groq_api_key)
 
-# Now you can use the client safely!
-# completion = client.chat.completions.create(...)
+
 #client = Groq()
 
 def load_and_preprocess_mock_data():
     df = pd.read_csv('events.csv')
-    # Sort chronologically to capture actual user journey paths
     df = df.sort_values(by='timestamp')
     return df
 def get_user_history_string(df, user_id):
@@ -66,7 +61,7 @@ def recommend_next_items(user_history, candidate_items):
 
     try:
         completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",  # Updated to the currently active production model
+            model="llama-3.1-8b-instant",  
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
