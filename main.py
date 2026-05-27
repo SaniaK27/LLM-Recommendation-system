@@ -16,7 +16,7 @@ client = Groq(api_key=groq_api_key)
 
 # Now you can use the client safely!
 # completion = client.chat.completions.create(...)
-client = Groq()
+#client = Groq()
 
 def load_and_preprocess_mock_data():
     df = pd.read_csv('events.csv')
