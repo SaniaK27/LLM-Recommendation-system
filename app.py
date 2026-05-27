@@ -261,4 +261,4 @@ if user_profile_text is not None:
             st.write("---")
             st.markdown("### 🔬 Engineering Diagnostic Control Center")
             with st.expander("🛠️ View Prompts Context Payloads"):
-                st.markdown("**System Blueprint Prompt Instructions:**)
+                st.markdown("**System Blueprint Prompt Instructions:**")
