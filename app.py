@@ -8,7 +8,7 @@ import json
 # Page Configuration
 st.set_page_config(page_title="LLM Recommender Engine", page_icon="🛍️", layout="centered")
 
-st.title("LLM-Powered Retail Recommendation Engine")
+st.title(" AI-Powered Retail Recommendation Engine")
 st.caption("Final Year Project Demo | Inference: Groq API | Model: Llama 3.1")
 st.write("---")
 
@@ -17,15 +17,13 @@ load_dotenv()
 groq_api_key = os.getenv("GROQ_API_KEY")
 
 if not groq_api_key:
-    st.error("Groq API Key missing! Please add GROQ_API_KEY to your Streamlit Secrets.")
+    st.error("🔑 Groq API Key missing! Please add GROQ_API_KEY to your Streamlit Secrets.")
     st.stop()
 
 client = Groq(api_key=groq_api_key)
 
-# --- 📦 VIRTUAL PRODUCT CATALOG MATRIX ---
-# Maps raw dataset IDs to realistic e-commerce products for the presentation layout
+# --- 📦 PRODUCT CATALOG MATRIX ---
 PRODUCT_CATALOG = {
-    # Past History Items
     355908: {"name": "Sony WH-1000XM5 Wireless Headphones", "category": "Electronics", "price": "$399.00"},
     25656:  {"name": "Anker USB-C Fast Charging Cable (6ft)", "category": "Electronics Accessories", "price": "$19.99"},
     455502: {"name": "Apple MacBook Air M3 (13-inch)", "category": "Computers", "price": "$1,099.00"},
@@ -39,8 +37,22 @@ PRODUCT_CATALOG = {
     22222:  {"name": "Spigen Liquid Air iPhone 15 Pro Case", "category": "Mobile Accessories", "price": "$15.99"}
 }
 
+# --- 👥 USER PERSONA METADATA MAPPING ---
+# This maps the raw visitor IDs from events.csv to realistic human professional profiles
+USER_PERSONA_MAP = {
+    257597: {
+        "name": "Rohan Malhotra",
+        "role": "University Student (Tech & Gaming enthusiast)",
+        "bio": "Daily commuter who studies on the go and spends evenings working on programming assignments and casual gaming."
+    },
+    999123: {
+        "name": "Meera Nair",
+        "role": "Remote Job Professional (Corporate Software Engineer)",
+        "bio": "Working fully from her home office setup. Focuses heavily on desk ergonomics, productivity tools, and hardware efficiency."
+    }
+}
+
 def get_product_details(item_id):
-    """Helper function to fetch metadata or fallback gracefully if ID is missing."""
     return PRODUCT_CATALOG.get(int(item_id), {"name": f"Premium Retail Item #{item_id}", "category": "General Merchandise", "price": "$49.99"})
 
 # --- CORE LOGIC ---
@@ -48,6 +60,8 @@ def get_product_details(item_id):
 def load_and_preprocess_mock_data():
     df = pd.read_csv('events.csv')
     df = df.sort_values(by='timestamp')
+    # Filter the dataframe so it ONLY contains the users we have mapped personas for
+    df = df[df['visitorid'].isin(USER_PERSONA_MAP.keys())]
     return df
 
 def get_user_history_string(df, user_id):
@@ -58,13 +72,12 @@ def get_user_history_string(df, user_id):
     history_events = []
     for _, row in user_actions.iterrows():
         prod = get_product_details(row['itemid'])
-        action_desc = f"- {row['event'].upper()}: {prod['name']} (ID: {row['itemid']})"
+        action_desc = f"- {row['event'].upper()}: {prod['name']}"
         history_events.append(action_desc)
         
     return "\n".join(history_events)
 
-def recommend_next_items(user_history, candidate_items):
-    # Convert candidates to a rich description text block so the LLM has contextual semantics to judge
+def recommend_next_items(user_persona, user_history, candidate_items):
     candidate_context = ""
     for c_id in candidate_items:
         p_details = get_product_details(c_id)
@@ -72,12 +85,17 @@ def recommend_next_items(user_history, candidate_items):
 
     system_prompt = (
         "You are an expert e-commerce recommendation engine for a retail platform. "
-        "Your task is to analyze a user's past interaction behavior "
-        "and determine which items from a list of available candidates they are most likely to interact with next. "
+        "Your task is to analyze a user's professional persona profile and past interaction behavior "
+        "to determine which candidate items they are most likely to interact with next. "
         "Return your answer strictly in a valid JSON format with a key 'recommendations' mapping to a list of integer object IDs."
     )
     
     user_prompt = f"""
+    User Professional Profile:
+    - Name: {user_persona['name']}
+    - Occupation/Role: {user_persona['role']}
+    - Core Habits: {user_persona['bio']}
+
     User Interaction History (Oldest to Newest):
     {user_history}
 
@@ -85,12 +103,12 @@ def recommend_next_items(user_history, candidate_items):
     {candidate_context}
 
     Task:
-    Analyze patterns in the items they interacted with. Pick the top 2 best candidate IDs 
-    that logically match the user's sequential consumption behavior.
+    Analyze both the structural sequence of past items AND how contextually appropriate the candidates 
+    are for a person working in this user's specific career/lifestyle role. Pick the top 2 best candidate IDs.
     
     Expected JSON Output format:
     {{
-        "explanation": "Brief reasoning for why these items fit the past sequence contextually",
+        "explanation": "Provide a comprehensive reasoning matrix explaining why these specific items match both their historical sequence and professional career profile.",
         "recommendations": [item_id_1, item_id_2]
     }}
     """
@@ -116,39 +134,49 @@ except FileNotFoundError:
     st.error("📂 `events.csv` missing.")
     st.stop()
 
-st.sidebar.header("🕹️ Simulation Control Panel")
-unique_users = events_df['visitorid'].unique()
-selected_user = st.sidebar.selectbox("Select a Target Buyer Profile:", unique_users)
+# Sidebar UI
+st.sidebar.header(" Simulation Control Panel")
 
-# Define candidates
+# Create clean dropdown text combining Name and Professional Title
+dropdown_options = {v_id: f"👤 {meta['name']} ({meta['role']})" for v_id, meta in USER_PERSONA_MAP.items()}
+selected_user_id = st.sidebar.selectbox(
+    "Select a User Profile to Test:", 
+    options=list(dropdown_options.keys()), 
+    format_func=lambda x: dropdown_options[x]
+)
+
+# Fetch current persona metadata
+current_persona = USER_PERSONA_MAP[selected_user_id]
+
+# Candidate Display
 candidates = [49521, 150318, 88888, 11111, 22222]
-
-st.sidebar.markdown("### 🎯 Candidate Inventory Pool")
+st.sidebar.markdown("###  Candidate Inventory Pool")
 for c in candidates:
     det = get_product_details(c)
     st.sidebar.caption(f"**ID {c}**: {det['name']} ({det['price']})")
 
-# Main Interface Rendering
-st.subheader(f"👤 Customer Interaction Timeline: Profile #{selected_user}")
+# Main Page UI Layout
+st.markdown(f"### Target Persona: **{current_persona['name']}**")
+st.markdown(f" **Professional Role:** `{current_persona['role']}`")
+st.caption(f" **User Background Summary:** {current_persona['bio']}")
+st.write("---")
 
-user_profile_text = get_user_history_string(events_df, selected_user)
+user_profile_text = get_user_history_string(events_df, selected_user_id)
 
 if user_profile_text is None:
-    st.warning("No history found.")
+    st.warning("No data found.")
 else:
     st.info("**Extracted Behavioral Context (Passed to Llama-3.1):**")
     st.code(user_profile_text, language="text")
 
-    if st.button("🚀 Execute Contextual LLM Recommendation"):
-        with st.spinner("Analyzing cross-category dependencies via Groq LPU..."):
-            recommendation_output = recommend_next_items(user_profile_text, candidates)
+    if st.button(" Execute Persona-Aware LLM Recommendation"):
+        with st.spinner("Analyzing cross-category behavioral matrices via Groq..."):
+            recommendation_output = recommend_next_items(current_persona, user_profile_text, candidates)
             
             try:
                 parsed_json = json.loads(recommendation_output)
                 
                 st.markdown("###  Top Personalized Recommendations")
-                
-                # Render beautiful metric visual containers for the products
                 rec_ids = parsed_json['recommendations']
                 cols = st.columns(len(rec_ids))
                 
@@ -160,9 +188,9 @@ else:
                         st.caption(f"Category: {prod_info['category']} | ID: {item_id}")
                 
                 st.write("---")
-                st.markdown("### Neural Reasoning Matrix (Explainable AI)")
-                st.info(parsed_json['explanation'])
+                st.markdown("###  Neural Reasoning Matrix (Explainable AI)")
+                st.success(parsed_json['explanation'])
                 
             except Exception:
-                st.error("Format execution mismatched. Raw engine dump:")
+                st.error("Parsing failed. Raw dump:")
                 st.write(recommendation_output)
