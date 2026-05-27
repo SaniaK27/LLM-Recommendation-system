@@ -5,68 +5,92 @@ import streamlit as st
 from dotenv import load_dotenv
 import json
 
-# 1. Page Configuration & Theme setup
+# Page Configuration
 st.set_page_config(page_title="LLM Recommender Engine", page_icon="🛍️", layout="centered")
 
-st.title("🛍️ LLM-Based Sequential Recommendation Engine")
-st.caption("Final Year Project Demo | Dataset: Retail Rocket | Inference: Groq API")
+st.title("🛍️ LLM-Powered Retail Recommendation Engine")
+st.caption("Final Year Project Demo | Inference: Groq API | Model: Llama 3.1")
 st.write("---")
 
-# 2. Retrieve the Groq API key safely from environment variables
+# Load Environment Variables
 load_dotenv()
 groq_api_key = os.getenv("GROQ_API_KEY")
 
 if not groq_api_key:
-    st.error("🔑 Groq API Key missing! Please add GROQ_API_KEY to your Streamlit Secrets dashboard.")
+    st.error("🔑 Groq API Key missing! Please add GROQ_API_KEY to your Streamlit Secrets.")
     st.stop()
 
-# Initialize Groq Client
 client = Groq(api_key=groq_api_key)
 
-# 3. Core Logic Functions
-@st.cache_data # Caches data so it doesn't reload from disk on every button click
+# --- 📦 VIRTUAL PRODUCT CATALOG MATRIX ---
+# Maps raw dataset IDs to realistic e-commerce products for the presentation layout
+PRODUCT_CATALOG = {
+    # Past History Items
+    355908: {"name": "Sony WH-1000XM5 Wireless Headphones", "category": "Electronics", "price": "$399.00"},
+    25656:  {"name": "Anker USB-C Fast Charging Cable (6ft)", "category": "Electronics Accessories", "price": "$19.99"},
+    455502: {"name": "Apple MacBook Air M3 (13-inch)", "category": "Computers", "price": "$1,099.00"},
+    118252: {"name": "Logitech MX Master 3S Ergonomic Mouse", "category": "Computer Accessories", "price": "$99.99"},
+    
+    # Candidate Pool Items
+    49521:  {"name": "Apple AirPods Pro (2nd Generation)", "category": "Electronics", "price": "$249.00"},
+    150318: {"name": "Satechi Aluminum Multi-Port USB-C Hub", "category": "Computer Accessories", "price": "$79.99"},
+    88888:  {"name": "Dell UltraSharp 27-inch 4K Monitor", "category": "Computers & Displays", "price": "$459.99"},
+    11111:  {"name": "Hydro Flask 32 oz Wide Mouth Water Bottle", "category": "Fitness & Outdoor", "price": "$44.95"},
+    22222:  {"name": "Spigen Liquid Air iPhone 15 Pro Case", "category": "Mobile Accessories", "price": "$15.99"}
+}
+
+def get_product_details(item_id):
+    """Helper function to fetch metadata or fallback gracefully if ID is missing."""
+    return PRODUCT_CATALOG.get(int(item_id), {"name": f"Premium Retail Item #{item_id}", "category": "General Merchandise", "price": "$49.99"})
+
+# --- CORE LOGIC ---
+@st.cache_data
 def load_and_preprocess_mock_data():
     df = pd.read_csv('events.csv')
     df = df.sort_values(by='timestamp')
     return df
 
 def get_user_history_string(df, user_id):
-    """Filters the dataframe for a specific user and maps out their historical timeline."""
     user_actions = df[df['visitorid'] == user_id]
-    
     if user_actions.empty:
         return None
     
     history_events = []
     for _, row in user_actions.iterrows():
-        action_desc = f"- {row['event'].upper()} item ID: {row['itemid']}"
+        prod = get_product_details(row['itemid'])
+        action_desc = f"- {row['event'].upper()}: {prod['name']} (ID: {row['itemid']})"
         history_events.append(action_desc)
         
     return "\n".join(history_events)
 
 def recommend_next_items(user_history, candidate_items):
-    """Calls Groq API to perform LLM-based zero-shot sequential recommendation."""
+    # Convert candidates to a rich description text block so the LLM has contextual semantics to judge
+    candidate_context = ""
+    for c_id in candidate_items:
+        p_details = get_product_details(c_id)
+        candidate_context += f"- ID {c_id}: {p_details['name']} (Category: {p_details['category']}, Price: {p_details['price']})\n"
+
     system_prompt = (
         "You are an expert e-commerce recommendation engine for a retail platform. "
-        "Your task is to analyze a user's past interaction behavior (views, additions to cart, and transactions) "
+        "Your task is to analyze a user's past interaction behavior "
         "and determine which items from a list of available candidates they are most likely to interact with next. "
-        "Return your answer strictly in a valid JSON format with a key 'recommendations' mapping to a list of object IDs."
+        "Return your answer strictly in a valid JSON format with a key 'recommendations' mapping to a list of integer object IDs."
     )
     
     user_prompt = f"""
     User Interaction History (Oldest to Newest):
     {user_history}
 
-    Available Candidate Item IDs for Recommendation:
-    {candidate_items}
+    Available Candidate Items for Recommendation:
+    {candidate_context}
 
     Task:
-    Analyze patterns in the item IDs they interacted with. Pick the top 2 best candidate IDs 
-    that logically match the user's sequential consumption behavior. 
+    Analyze patterns in the items they interacted with. Pick the top 2 best candidate IDs 
+    that logically match the user's sequential consumption behavior.
     
     Expected JSON Output format:
     {{
-        "explanation": "Brief reasoning for why these items fit the past sequence",
+        "explanation": "Brief reasoning for why these items fit the past sequence contextually",
         "recommendations": [item_id_1, item_id_2]
     }}
     """
@@ -85,63 +109,60 @@ def recommend_next_items(user_history, candidate_items):
     except Exception as e:
         return f"An error occurred with the API call: {e}"
 
-# --- STREAMLIT UI PIPELINE ---
-
-# Load Data
+# --- STREAMLIT UI LAYOUT ---
 try:
     events_df = load_and_preprocess_mock_data()
 except FileNotFoundError:
-    st.error("📂 `events.csv` not found in the root directory! Please upload it to your repository.")
+    st.error("📂 `events.csv` missing.")
     st.stop()
 
-# Sidebar Setup for Interactive Presentation
-st.sidebar.header("🕹️ Control Panel")
-# Automatically pull unique visitor IDs from your events.csv file
+st.sidebar.header("🕹️ Simulation Control Panel")
 unique_users = events_df['visitorid'].unique()
-selected_user = st.sidebar.selectbox("Select a Target Buyer ID:", unique_users)
+selected_user = st.sidebar.selectbox("Select a Target Buyer Profile:", unique_users)
 
 # Define candidates
 candidates = [49521, 150318, 88888, 11111, 22222]
-st.sidebar.write(f"**Candidate Pool:** {candidates}")
 
-# Main Layout Presentation
-st.subheader(f"👤 Customer Profile: Visitor ID {selected_user}")
+st.sidebar.markdown("### 🎯 Candidate Inventory Pool")
+for c in candidates:
+    det = get_product_details(c)
+    st.sidebar.caption(f"**ID {c}**: {det['name']} ({det['price']})")
+
+# Main Interface Rendering
+st.subheader(f"👤 Customer Interaction Timeline: Profile #{selected_user}")
 
 user_profile_text = get_user_history_string(events_df, selected_user)
 
 if user_profile_text is None:
-    st.warning(f"No history found in mock dataset for user {selected_user}. Please select another ID from the sidebar.")
+    st.warning("No history found.")
 else:
-    # Display the constructed narrative
-    st.info("**Constructed Behavioral Narrative (Fed to LLM):**")
+    st.info("**Extracted Behavioral Context (Passed to Llama-3.1):**")
     st.code(user_profile_text, language="text")
 
-    # The Action Button
-    if st.button("🚀 Run LLM Recommender Engine"):
-        with st.spinner("Analyzing sequences via Llama-3.1 on Groq..."):
+    if st.button("🚀 Execute Contextual LLM Recommendation"):
+        with st.spinner("Analyzing cross-category dependencies via Groq LPU..."):
             recommendation_output = recommend_next_items(user_profile_text, candidates)
             
-            st.success("🤖 Recommendation Framework Execution Successful!")
-            
-            # Display results in two clean tabs
-            tab1, tab2 = st.tabs(["📊 Structured Output", "⚙️ Raw JSON JSON Response"])
-            
-            with tab1:
-                try:
-                    # Attempt to parse the JSON string response
-                    parsed_json = json.loads(recommendation_output)
-                    
-                    st.markdown("### 🎯 Top Recommended Items")
-                    cols = st.columns(len(parsed_json['recommendations']))
-                    for idx, item in enumerate(parsed_json['recommendations']):
-                        cols[idx].metric(label=f"Recommendation #{idx+1}", value=f"ID: {item}")
-                    
-                    st.markdown("### 🧠 LLM Reasoning Matrix")
-                    st.write(parsed_json['explanation'])
-                    
-                except Exception:
-                    st.write("Could not parse output cleanly into cards. See raw JSON tab.")
-                    st.write(recommendation_output)
-            
-            with tab2:
-                st.json(recommendation_output)
+            try:
+                parsed_json = json.loads(recommendation_output)
+                
+                st.markdown("### 🎯 Top Personalized Recommendations")
+                
+                # Render beautiful metric visual containers for the products
+                rec_ids = parsed_json['recommendations']
+                cols = st.columns(len(rec_ids))
+                
+                for idx, item_id in enumerate(rec_ids):
+                    prod_info = get_product_details(item_id)
+                    with cols[idx]:
+                        st.metric(label=f"Top Match #{idx+1}", value=prod_info['price'])
+                        st.markdown(f"**{prod_info['name']}**")
+                        st.caption(f"Category: {prod_info['category']} | ID: {item_id}")
+                
+                st.write("---")
+                st.markdown("### 🧠 Neural Reasoning Matrix (Explainable AI)")
+                st.info(parsed_json['explanation'])
+                
+            except Exception:
+                st.error("Format execution mismatched. Raw engine dump:")
+                st.write(recommendation_output)
