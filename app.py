@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from groq import Groq
 
-
+st.title("Hello World! The app is compiling successfully.")
 from dotenv import load_dotenv
 
 load_dotenv()
