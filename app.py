@@ -5,19 +5,18 @@ import streamlit as st
 from dotenv import load_dotenv
 import json
 
-# Page Configuration
+# 1. Page Configuration
 st.set_page_config(page_title="LLM Recommender Engine", page_icon="🛍️", layout="centered")
 
 st.title(" AI-Powered Retail Recommendation Engine")
 st.caption("Final Year Project Demo | Inference: Groq API | Model: Llama 3.1")
-st.write("---")
 
 # Load Environment Variables
 load_dotenv()
 groq_api_key = os.getenv("GROQ_API_KEY")
 
 if not groq_api_key:
-    st.error("🔑 Groq API Key missing! Please add GROQ_API_KEY to your Streamlit Secrets.")
+    st.error(" Groq API Key missing! Please add GROQ_API_KEY to your Streamlit Secrets.")
     st.stop()
 
 client = Groq(api_key=groq_api_key)
@@ -38,7 +37,6 @@ PRODUCT_CATALOG = {
 }
 
 # --- 👥 USER PERSONA METADATA MAPPING ---
-# This maps the raw visitor IDs from events.csv to realistic human professional profiles
 USER_PERSONA_MAP = {
     257597: {
         "name": "Rohan Malhotra",
@@ -60,9 +58,10 @@ def get_product_details(item_id):
 def load_and_preprocess_mock_data():
     df = pd.read_csv('events.csv')
     df = df.sort_values(by='timestamp')
-    # Filter the dataframe so it ONLY contains the users we have mapped personas for
-    df = df[df['visitorid'].isin(USER_PERSONA_MAP.keys())]
-    return df
+    # Filter dataframe to track only our active demo personas
+    full_user_list = list(df['visitorid'].unique())
+    df_filtered = df[df['visitorid'].isin(USER_PERSONA_MAP.keys())]
+    return df_filtered, len(df), len(full_user_list)
 
 def get_user_history_string(df, user_id):
     user_actions = df[df['visitorid'] == user_id]
@@ -77,12 +76,7 @@ def get_user_history_string(df, user_id):
         
     return "\n".join(history_events)
 
-def recommend_next_items(user_persona, user_history, candidate_items):
-    candidate_context = ""
-    for c_id in candidate_items:
-        p_details = get_product_details(c_id)
-        candidate_context += f"- ID {c_id}: {p_details['name']} (Category: {p_details['category']}, Price: {p_details['price']})\n"
-
+def recommend_next_items(user_persona, user_history, candidate_items, candidate_context_str):
     system_prompt = (
         "You are an expert e-commerce recommendation engine for a retail platform. "
         "Your task is to analyze a user's professional persona profile and past interaction behavior "
@@ -100,7 +94,7 @@ def recommend_next_items(user_persona, user_history, candidate_items):
     {user_history}
 
     Available Candidate Items for Recommendation:
-    {candidate_context}
+    {candidate_context_str}
 
     Task:
     Analyze both the structural sequence of past items AND how contextually appropriate the candidates 
@@ -123,74 +117,60 @@ def recommend_next_items(user_persona, user_history, candidate_items):
             temperature=0.2, 
             response_format={"type": "json_object"} 
         )
-        return completion.choices[0].message.content
+        return completion.choices[0].message.content, system_prompt, user_prompt
     except Exception as e:
-        return f"An error occurred with the API call: {e}"
+        return f"An error occurred with the API call: {e}", "", ""
 
-# --- STREAMLIT UI LAYOUT ---
+# --- STREAMLIT UI LAYOUT & EXECUTION ---
 try:
-    events_df = load_and_preprocess_mock_data()
+    events_df, total_raw_rows, total_unique_users = load_and_preprocess_mock_data()
 except FileNotFoundError:
-    st.error("📂 `events.csv` missing.")
+    st.error("📂 `events.csv` missing from your main repository directory.")
     st.stop()
 
-# Sidebar UI
+# UPGRADE 1: Dataset Overview Metrics Card Header
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Click Events", f"{total_raw_rows:,}")
+col2.metric("Tracked System Profiles", f"{total_unique_users:,}")
+col3.metric("Candidate Pool Size", "5 Items")
+st.write("---")
+
+# Sidebar Configuration Layout
 st.sidebar.header(" Simulation Control Panel")
 
-# Create clean dropdown text combining Name and Professional Title
-dropdown_options = {v_id: f"👤 {meta['name']} ({meta['role']})" for v_id, meta in USER_PERSONA_MAP.items()}
+# UPGRADE 3 (Part 1): Set up the Presentation Toggle Mode
+app_mode = st.sidebar.radio("View Dashboard Mode As:", [" Executive Dashboard", " Research / Debug Mode"])
+
+st.sidebar.write("---")
+
+# User Selection Dropdown Setup
+dropdown_options = {v_id: f" {meta['name']} ({meta['role']})" for v_id, meta in USER_PERSONA_MAP.items()}
 selected_user_id = st.sidebar.selectbox(
     "Select a User Profile to Test:", 
     options=list(dropdown_options.keys()), 
     format_func=lambda x: dropdown_options[x]
 )
 
-# Fetch current persona metadata
 current_persona = USER_PERSONA_MAP[selected_user_id]
 
-# Candidate Display
+# Predefined Candidate Item Pool configuration
 candidates = [49521, 150318, 88888, 11111, 22222]
-st.sidebar.markdown("###  Candidate Inventory Pool")
+candidates_context = ""
+for c in candidates:
+    det = get_product_details(c)
+    candidates_context += f"- ID {c}: {det['name']} (Category: {det['category']}, Price: {det['price']})\n"
+
+st.sidebar.markdown("### Available Candidate Inventory")
 for c in candidates:
     det = get_product_details(c)
     st.sidebar.caption(f"**ID {c}**: {det['name']} ({det['price']})")
 
-# Main Page UI Layout
-st.markdown(f"### Target Persona: **{current_persona['name']}**")
-st.markdown(f" **Professional Role:** `{current_persona['role']}`")
-st.caption(f" **User Background Summary:** {current_persona['bio']}")
-st.write("---")
+# Main Stage Display Elements
+st.markdown(f"### Target Persona Focus: **{current_persona['name']}**")
+st.markdown(f" **Professional Career Designation:** `{current_persona['role']}`")
+st.caption(f" **User Profile Persona Summary:** {current_persona['bio']}")
 
 user_profile_text = get_user_history_string(events_df, selected_user_id)
 
 if user_profile_text is None:
-    st.warning("No data found.")
-else:
-    st.info("**Extracted Behavioral Context (Passed to Llama-3.1):**")
-    st.code(user_profile_text, language="text")
-
-    if st.button(" Execute Persona-Aware LLM Recommendation"):
-        with st.spinner("Analyzing cross-category behavioral matrices via Groq..."):
-            recommendation_output = recommend_next_items(current_persona, user_profile_text, candidates)
-            
-            try:
-                parsed_json = json.loads(recommendation_output)
-                
-                st.markdown("###  Top Personalized Recommendations")
-                rec_ids = parsed_json['recommendations']
-                cols = st.columns(len(rec_ids))
-                
-                for idx, item_id in enumerate(rec_ids):
-                    prod_info = get_product_details(item_id)
-                    with cols[idx]:
-                        st.metric(label=f"Top Match #{idx+1}", value=prod_info['price'])
-                        st.markdown(f"**{prod_info['name']}**")
-                        st.caption(f"Category: {prod_info['category']} | ID: {item_id}")
-                
-                st.write("---")
-                st.markdown("###  Neural Reasoning Matrix (Explainable AI)")
-                st.success(parsed_json['explanation'])
-                
-            except Exception:
-                st.error("Parsing failed. Raw dump:")
-                st.write(recommendation_output)
+    st.warning("No data history context found.")
