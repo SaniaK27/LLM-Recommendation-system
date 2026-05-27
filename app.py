@@ -8,7 +8,7 @@ import json
 # Page Configuration
 st.set_page_config(page_title="LLM Recommender Engine", page_icon="🛍️", layout="centered")
 
-st.title("🛍️ LLM-Powered Retail Recommendation Engine")
+st.title("LLM-Powered Retail Recommendation Engine")
 st.caption("Final Year Project Demo | Inference: Groq API | Model: Llama 3.1")
 st.write("---")
 
@@ -17,7 +17,7 @@ load_dotenv()
 groq_api_key = os.getenv("GROQ_API_KEY")
 
 if not groq_api_key:
-    st.error("🔑 Groq API Key missing! Please add GROQ_API_KEY to your Streamlit Secrets.")
+    st.error("Groq API Key missing! Please add GROQ_API_KEY to your Streamlit Secrets.")
     st.stop()
 
 client = Groq(api_key=groq_api_key)
@@ -146,7 +146,7 @@ else:
             try:
                 parsed_json = json.loads(recommendation_output)
                 
-                st.markdown("### 🎯 Top Personalized Recommendations")
+                st.markdown("###  Top Personalized Recommendations")
                 
                 # Render beautiful metric visual containers for the products
                 rec_ids = parsed_json['recommendations']
@@ -160,7 +160,7 @@ else:
                         st.caption(f"Category: {prod_info['category']} | ID: {item_id}")
                 
                 st.write("---")
-                st.markdown("### 🧠 Neural Reasoning Matrix (Explainable AI)")
+                st.markdown("### Neural Reasoning Matrix (Explainable AI)")
                 st.info(parsed_json['explanation'])
                 
             except Exception:
