@@ -255,7 +255,7 @@ if user_profile_text is not None:
                             <small style="color: #94a3b8; font-size: 0.75em;">ID: {b_id}</small>
                         </div>
                     """, unsafe_allow_html=True)
-            st.warning(" **Architectural Deficit Analysis:** Notice how the baseline algorithm stubbornly suggests the general item to everyone. Your LLM model successfully uses context to avoid this.")
+            st.warning(" **Architectural Deficit Analysis:** Notice how the baseline algorithm stubbornly suggests the general item to everyone. Our LLM model successfully uses context to avoid this.")
 
         if app_mode == " Research / Debug Mode":
             st.write("---")
